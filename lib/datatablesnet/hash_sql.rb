@@ -45,9 +45,13 @@ module HashSql
             where_string << " #{sql_operator ? sql_operator : 'and'} "
           end
 
-          if self.sql_comparator = "like"
+          if value.instance_of?(Range)
+            where_string << "(#{name} BETWEEN ? AND ?)"
+            values << value.min
+            values << value.max
+          elsif self.sql_comparator = "like"
             where_string <<  "#{name} LIKE ?"
-            values << '%' + value + '%'
+            values << '%' + value.to_s + '%'
           else
             where_string <<  "#{name} = ?"
             values << value

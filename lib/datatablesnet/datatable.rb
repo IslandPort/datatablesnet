@@ -1,4 +1,6 @@
 require 'datatablesnet/types'
+require 'datatablesnet/hash_sql'
+require 'uri'
 
 module Datatable
 
@@ -70,16 +72,19 @@ module Datatable
 
     options =
       {
-        :show_actions       => true,
+        :show_actions       => false,
         :per_page           => 25,
         :toolbar_external   => false
       }.merge(options)
+
+    url = URI::split(options[:data_url]);
 
     index = 0
     columns.each do |column|
       column[:label] = field_to_label(column[:field]) unless column[:label].present?
       if options[:data_url].present?
-        options[:data_url] << "?" if column == columns.first
+        options[:data_url] << "?" if column == columns.first and url[7] == nil
+        options[:data_url] << "&" if column == columns.first and url[7] != nil
         options[:data_url] << "column_field_#{index.to_s}=#{column[:field]}"
         if column[:view_link].present?
           options[:data_url] << "&column_view_link_#{index.to_s}=#{column[:view_link]}"
@@ -99,6 +104,8 @@ module Datatable
         table_options[v] = options[k]
       end
     end
+
+    table_options["fnInfoCallback"] = NoEscape.new(options[:info_callback]) if options[:info_callback].present?
 
     table_options["aoColumns"] = datatable_get_column_defs(options,columns)
 
@@ -205,6 +212,24 @@ module Datatable
       end
     end
 
+    search_by = {}
+    params.each do |key, value|
+      if key =~ /query_.*/ and !value.empty?
+        if key =~ /.*_to/
+          field_name = key[6..-4]
+          search_by[field_name] = {} unless search_by[field_name].present?
+          search_by[field_name][:to] = convert_string(value)
+        elsif key =~ /.*_from/
+          field_name = key[6..-6]
+          search_by[field_name] = {} unless search_by[field_name].present?
+          search_by[field_name][:from] = convert_string(value)
+        else
+          search_by[key[6..-1]] = value
+        end
+      end
+    end
+
+    grid_options[:search_by] = search_by
     grid_options[:columns] = columns
     grid_options[:order_by] = order_by
     grid_options[:filter_by] = filter_by
@@ -217,28 +242,29 @@ module Datatable
     grid_options
   end
 
+  def convert_string value
+    begin
+      value = Date.parse(value)
+    rescue ArgumentError
+      value = value.to_i
+      if value == 0
+        value = value
+      end
+    end
+    value
+  end
 
-  def find(klass, params={}, options = {})
+
+  def build_condition(klass, params={}, options = {})
+    grid_options = parse_params params
+    build_condition_internal(klass, grid_options, options[:conditions].present? ? options[:conditions] : nil)
+  end
+
+  def build_condition_internal(klass, grid_options, conditions)
     field_filter_where = {}
     all_filter_where = {}
+    search_filter_where = {}
 
-    grid_options = parse_params params
-
-
-    options[:page] = grid_options[:page]
-    options[:per_page] = grid_options[:per_page]
-
-    # Build order by
-    grid_options[:order_by].each do |column, order|
-      if options[:order].present?
-        options[:order] << ", "
-      else
-        options[:order] = ""
-      end
-      options[:order] << "#{column} #{order}"
-    end
-
-    # Build filter by
     grid_options[:filter_by].each do |column, value|
       field_filter_where[column] = value
     end
@@ -252,9 +278,61 @@ module Datatable
       end
     end
 
-    if !field_filter_where.empty? or !all_filter_where.empty?
-      options[:conditions] = [field_filter_where.sql_like, all_filter_where.sql_or.sql_like].sql_and.sql_where
+    #process search_by
+    grid_options[:search_by].each do |column, value|
+      if value.instance_of?(Hash)
+        if value[:to].present?
+          search_filter_where[column] = (value[:from]..value[:to])
+        else
+          search_filter_where[column] = value[:from]
+        end
+      else
+        search_filter_where[column] = value
+      end
     end
+
+    if !field_filter_where.empty? or !all_filter_where.empty? or !search_filter_where.empty?
+      sql_where = [field_filter_where.sql_like, all_filter_where.sql_or.sql_like, search_filter_where.sql_and].sql_and.sql_where
+      if conditions
+        if conditions.instance_of?(Array)
+          condition_string = conditions[0]
+          condition_params = conditions[1..-1]
+        else
+          condition_string = conditions
+          condition_params = []
+        end
+        condition_string << " and (" << sql_where[0] << ")"
+        condition_params += sql_where[1..-1]
+        conditions = [condition_string] + condition_params
+      else
+        conditions = sql_where
+      end
+    end
+    conditions
+  end
+
+  def find(klass, params={}, options = {})
+    puts params.to_json
+
+    grid_options = parse_params params
+
+    options[:page] = grid_options[:page]
+    options[:per_page] = grid_options[:per_page]
+
+    # Build order by
+    grid_options[:order_by].each do |column, order|
+      if column
+        if options[:order].present?
+          options[:order] << ", "
+        else
+          options[:order] = ""
+        end
+        options[:order] << "#{column} #{order}"
+      end
+    end
+
+    # Build filter by
+    options[:conditions] = build_condition_internal(klass, grid_options, options[:conditions].present? ? options[:conditions] : nil)
 
     puts options[:conditions]
 
@@ -274,7 +352,7 @@ module Datatable
 
     total_records = klass.count
     if options[:conditions].present?
-      klass.count(:conditions => options[:conditions])
+      total_display_records = klass.count(:conditions => options[:conditions])
     else
       total_display_records = total_records
     end
