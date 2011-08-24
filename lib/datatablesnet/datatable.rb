@@ -111,7 +111,8 @@ module Datatable
 
     config = {:options => options, :columns =>columns, :table_options => table_options}
     config.to_json
-    render :file => template_path + "/_table", :locals => { :table_id => id, :columns => columns, :rows => rows, :config => config}
+
+    render :partial => "datatablesnet/table", :locals => { :table_id => id, :columns => columns, :rows => rows, :config => config}
   end
 
   def datatable_get_column_defs options, columns

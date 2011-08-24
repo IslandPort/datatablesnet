@@ -1,0 +1,43 @@
+-options = config[:options]
+
+:javascript
+  $(document).ready(function(){
+    $('##{table_id}').dataTable(#{config[:table_options].to_json});
+    if(#{options[:toolbar].present? or options[:toolbar_external]}){
+      $('div.toolbar').html($('##{table_id}_toolbar').html());
+    }
+    if(#{options[:width].present?}){
+      $('##{table_id}_wrapper').css('width', '#{options[:width].to_s}');
+    }
+  });
+
+-if options[:toolbar].present?
+  %div{:id => table_id + "_toolbar", :style => "display:none"}
+    - options[:toolbar].each do |toolbar_item|
+      .toolbarItem
+        -if toolbar_item[:url]
+          =link_to toolbar_item[:text], toolbar_item[:url] , :class=>"btn"
+        -else
+          =toolbar_item[:text]
+
+%table.display{:id => table_id, :style => "#{options[:width].present? ? 'width:' + options[:width].to_s : 'width:100%!important'}"}
+  %thead
+    - columns.each do |column|
+      %th= column[:label]
+    - if options[:show_actions].to_b
+      %th Actions
+    - if options[:server_side].to_b
+      %th
+  %tbody
+    - unless options[:data_url].present?
+      - rows.each do |row|
+        %tr
+          - columns.each do |column|
+            %td
+              =datatable_get_column_data(row,column)
+          - if options[:show_actions] == 'true'
+            %td
+              .tableAction= link_to 'Show', row
+              .tableAction= link_to 'Edit', send("edit_#{row.class.to_s.demodulize.underscore}_path",row)
+              .tableAction= link_to 'Destroy', row, :confirm => 'Are you sure?', :method => :delete
+
