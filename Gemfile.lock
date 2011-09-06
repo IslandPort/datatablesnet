@@ -1,0 +1,16 @@
+PATH
+  remote: .
+  specs:
+    datatablesnet (1.1.4)
+
+GEM
+  remote: http://rubygems.org/
+  specs:
+    rake (0.8.7)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  datatablesnet!
+  rake (< 0.9)

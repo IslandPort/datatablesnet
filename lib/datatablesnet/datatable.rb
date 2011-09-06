@@ -111,7 +111,7 @@ module Datatable
 
     config = {:options => options, :columns =>columns, :table_options => table_options}
     config.to_json
-
+    
     render :partial => "datatablesnet/table", :locals => { :table_id => id, :columns => columns, :rows => rows, :config => config}
   end
 
@@ -128,13 +128,13 @@ module Datatable
       column_options = {}
       column_options_map.each do |k,v|
         if column[k].present?
-          column_options[v] = column[k]
+          column_options[v] = column[k] unless k==:width and request.env['HTTP_USER_AGENT'] =~ /Firefox/
         end
       end
       column_options["fnRender"] = NoEscape.new(options[:render]) if column[:render].present?
       column_options["fnRender"] = NoEscape.new("function (obj) {return #{column[:format]}(obj.aData[#{column_index}])}") if column[:format].present?
       if column[:view_link].present? and options[:server_side]
-        column_options["fnRender"] = NoEscape.new("function (obj) {return '<a href = ' + obj.aData[#{columns.length}]['urls']['#{column[:field]}'] + '>' + obj.aData[#{column_index}] + '</a>'}")
+        column_options["fnRender"] = NoEscape.new("function (obj) {if(obj.aData[#{columns.length}]['urls']['#{column[:field]}']!=null) {return '<a href = ' + obj.aData[#{columns.length}]['urls']['#{column[:field]}'] + '>' + obj.aData[#{column_index}] + '</a>'} else {return obj.aData[#{column_index}]} }")
       end
 
       unless column_options.empty?
@@ -150,7 +150,11 @@ module Datatable
     end
 
     if options[:server_side]
-      column_defs << {"bVisible" => false}
+      if request.env['HTTP_USER_AGENT'] =~ /Firefox/
+        column_defs << {"sClass" => "hidden"}
+      else
+        column_defs << {"bVisible" => false}
+      end
     end
 
     return column_defs
@@ -175,7 +179,12 @@ module Datatable
       if column[:view_link] == "."
         return link_to(obj, row)
       else
-        return link_to(obj, row.send(column[:view_link]))
+        link_obj = row.send(column[:view_link])
+        if link_obj
+          return link_to(obj, link_obj)
+        else
+          return obj
+        end
       end
     else
       return obj
@@ -187,7 +196,7 @@ module Datatable
     label.to_s.gsub(/\b\w/){$&.upcase}
   end
 
-  def parse_params params
+  def parse_params klass, params
     grid_options = {}
     columns = []
     order_by = {}
@@ -219,13 +228,14 @@ module Datatable
         if key =~ /.*_to/
           field_name = key[6..-4]
           search_by[field_name] = {} unless search_by[field_name].present?
-          search_by[field_name][:to] = convert_string(value)
+          search_by[field_name][:to] = convert_param(klass, field_name, value)
         elsif key =~ /.*_from/
           field_name = key[6..-6]
           search_by[field_name] = {} unless search_by[field_name].present?
-          search_by[field_name][:from] = convert_string(value)
+          search_by[field_name][:from] = convert_param(klass, field_name,value)
         else
-          search_by[key[6..-1]] = value
+          field_name = key[6..-1]
+          search_by[field_name] = convert_param(klass, field_name, value)
         end
       end
     end
@@ -243,21 +253,19 @@ module Datatable
     grid_options
   end
 
-  def convert_string value
-    begin
-      value = Date.parse(value)
-    rescue ArgumentError
-      value = value.to_i
-      if value == 0
-        value = value
-      end
+  def convert_param klass, field_name, value
+    case klass.columns_hash[field_name].type
+      when :date, :datetime
+        value = Date.parse(value)
+      when :integer, :float, :decimal
+        value = value.to_i
     end
     value
   end
 
 
   def build_condition(klass, params={}, options = {})
-    grid_options = parse_params params
+    grid_options = parse_params klass, params
     build_condition_internal(klass, grid_options, options[:conditions].present? ? options[:conditions] : nil)
   end
 
@@ -315,7 +323,7 @@ module Datatable
   def find(klass, params={}, options = {})
     puts params.to_json
 
-    grid_options = parse_params params
+    grid_options = parse_params klass, params
 
     options[:page] = grid_options[:page]
     options[:per_page] = grid_options[:per_page]
@@ -376,7 +384,12 @@ module Datatable
         if view_link == "."
           url = url_helper.url_for(row)
         else
-          url = url_helper.url_for(row.send(view_link))
+          link_obj = row.send(view_link)
+          if link_obj
+            url = url_helper.url_for(link_obj)
+          else
+            url = nil
+          end
         end
         meta[:urls][column[:field]] = url
       end
