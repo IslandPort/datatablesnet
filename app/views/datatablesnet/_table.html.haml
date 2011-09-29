@@ -30,7 +30,7 @@
     - if options[:show_actions].to_b
       %th Actions
     - if options[:server_side].to_b
-      %th
+      %th.hidden
   %tbody
     - unless options[:data_url].present?
       - rows.each do |row|

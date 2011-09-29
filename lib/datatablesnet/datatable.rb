@@ -66,7 +66,7 @@ module Datatable
                    :auto_scroll => "bScrollInfinite",
                    :pagination_type => "sPaginationType",
                    :paginate => "bPaginate",
-                   :save_state => "bStateSave"
+                   :save_state => "bStateSave",
                    }
 
 
@@ -74,11 +74,14 @@ module Datatable
       {
         :show_actions       => false,
         :per_page           => 25,
-        :toolbar_external   => false
+        :toolbar_external   => false,
+        :show_only_when_searched => false
       }.merge(options)
 
-    url = URI::split(options[:data_url]);
-
+    if options[:data_url].present?
+      url = URI::split(options[:data_url])
+    end
+    
     index = 0
     columns.each do |column|
       column[:label] = field_to_label(column[:field]) unless column[:label].present?
@@ -94,6 +97,10 @@ module Datatable
       index += 1
     end
 
+    if options[:show_only_when_searched]
+      options[:data_url] << "&show_only_when_searched=true"
+    end
+
     if options[:toolbar].present? or options[:toolbar_external]
       options[:dom]='<"toolbar">lfrtip'
     end
@@ -105,6 +112,11 @@ module Datatable
       end
     end
 
+    if options[:language].present?
+      puts "language present"
+      table_options["oLanguage"] = datatable_get_language_defs(options[:language])
+    end
+
     table_options["fnInfoCallback"] = NoEscape.new(options[:info_callback]) if options[:info_callback].present?
 
     table_options["aoColumns"] = datatable_get_column_defs(options,columns)
@@ -113,6 +125,21 @@ module Datatable
     config.to_json
     
     render :partial => "datatablesnet/table", :locals => { :table_id => id, :columns => columns, :rows => rows, :config => config}
+  end
+
+  def datatable_get_language_defs options
+    language_options_map = {:info_empty => "sInfoEmpty",
+                            :info_filtered => "sInfoFiltered",
+                            :empty_table => "sEmptyTable",
+                            :zero_records => "sZeroRecords"}
+
+    language_options = {}
+    language_options_map.each do |k,v|
+      if options[k].present?
+        language_options[v] = options[k]
+      end
+    end
+    language_options
   end
 
   def datatable_get_column_defs options, columns
@@ -201,6 +228,13 @@ module Datatable
     columns = []
     order_by = {}
     filter_by = {}
+
+    if params["show_only_when_searched"].present?
+      grid_options[:show_only_when_searched] = true
+    else
+      grid_options[:show_only_when_searched] = false
+    end
+
     (0..params[:iColumns].to_i-2).each do |index|
       column = {}
       column[:field] = params["column_field_#{index}"]
@@ -337,6 +371,16 @@ module Datatable
           options[:order] = ""
         end
         options[:order] << "#{column} #{order}"
+      end
+    end
+
+    if grid_options[:show_only_when_searched]
+      if grid_options[:search_by].empty?
+        json_data = {:sEcho => params[:sEcho],
+             :iTotalRecords =>  0,
+             :iTotalDisplayRecords => 0,
+             :aaData => []}
+        return json_data
       end
     end
 
