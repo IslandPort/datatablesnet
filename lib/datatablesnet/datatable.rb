@@ -25,7 +25,31 @@ module Datatable
     end
   end
 
-  #Options
+
+
+  module_function
+
+  def template_path
+    path = File.expand_path('..', __FILE__)
+    $:.unshift(path)
+    path
+  end
+
+
+
+  # The main method for generating the necessary javascript and html to display a datatable.
+  # This supports both ajax and non-ajax datatables.
+  #
+  # The following ar the input parameters:
+  #
+  # * <tt>id</tt> - The html id of the datatable
+  # * <tt>columns</tt> - Array of columns to be displayed. Each column is represented by a hash containing
+  # column configuration
+  # * <tt>rows</tt> - Rows to be displayed if the table is non-ajax
+  # * <tt>options</tt> - Table options
+  #
+  # The following are the table options:
+  #
   # :sort_by
   # :additional_data
   # :search
@@ -37,20 +61,13 @@ module Datatable
   # :auto_width
   # :row_callback
   # :show_actions
-  #Column Options
+  # :info_callback
+  #
+  # The following are Column Options
   # :name
   # :label
   # :render
   # :format
-
-  module_function
-
-  def template_path
-    path = File.expand_path('..', __FILE__)
-    $:.unshift(path)
-    path
-  end
-
   def datatable_tag id, columns = [], rows = nil, options = {}
     options_map = {:sort_by => "aaSorting",
                    :search => "bFilter",
@@ -289,6 +306,14 @@ module Datatable
 
   def convert_param klass, field_name, value
     case klass.columns_hash[field_name].type
+      when :string
+        klass.validators_on(field_name).each do |validator|
+          if validator.instance_of?(ActiveModel::Validations::NumericalityValidator)
+            if validator.options[:only_integer]
+                value = value.to_i
+            end
+          end
+        end
       when :date, :datetime
         value = Date.parse(value)
       when :integer, :float, :decimal
