@@ -25,6 +25,9 @@
 
 %table.display{:id => table_id, :style => "#{options[:width].present? ? 'width:' + options[:width].to_s : 'width:100%!important'}"}
   %thead
+    -if options[:checkboxes].to_b
+      %th
+        %input{:type => "checkbox"}
     - columns.each do |column|
       %th= column[:label]
     - if options[:show_actions].to_b

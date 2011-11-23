@@ -92,7 +92,8 @@ module Datatable
         :show_actions       => false,
         :per_page           => 25,
         :toolbar_external   => false,
-        :show_only_when_searched => false
+        :show_only_when_searched => false,
+        :checkboxes => false
       }.merge(options)
 
     if options[:data_url].present?
@@ -166,6 +167,10 @@ module Datatable
                           :searchable => "bSearchable",
                           :class => "sClass"}
 
+
+    if options[:checkboxes]
+      column_defs << nil
+    end
 
     column_index =0
     columns.each do |column|
@@ -278,14 +283,17 @@ module Datatable
       if key =~ /query_.*/ and !value.empty?
         if key =~ /.*_to/
           field_name = key[6..-4]
+          field_name.sub!('__', '.')
           search_by[field_name] = {} unless search_by[field_name].present?
           search_by[field_name][:to] = convert_param(klass, field_name, value)
         elsif key =~ /.*_from/
           field_name = key[6..-6]
+          field_name.sub!('__', '.')
           search_by[field_name] = {} unless search_by[field_name].present?
           search_by[field_name][:from] = convert_param(klass, field_name,value)
         else
           field_name = key[6..-1]
+          field_name.sub!('__', '.')
           search_by[field_name] = convert_param(klass, field_name, value)
         end
       end
@@ -305,6 +313,16 @@ module Datatable
   end
 
   def convert_param klass, field_name, value
+    attrs = field_name.split('.')
+    attrs.each_with_index do |attr, index|
+      if index == attrs.size - 1
+        field_name = attr
+      else
+        puts "Getting association: #{attr}"
+        klass = klass.reflect_on_association(attr.to_sym).klass
+      end
+    end
+
     case klass.columns_hash[field_name].type
       when :string
         klass.validators_on(field_name).each do |validator|
@@ -428,9 +446,15 @@ module Datatable
       objects << object
     end
 
-    total_records = klass.count
+
+    include = []
+    if options[:include].present?
+      include = options[:include]
+    end
+
+    total_records = klass.count :include => include
     if options[:conditions].present?
-      total_display_records = klass.count(:conditions => options[:conditions])
+      total_display_records = klass.count(:conditions => options[:conditions], :include => include)
     else
       total_display_records = total_records
     end
